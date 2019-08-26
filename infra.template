@@ -1,0 +1,154 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: devops
+
+Mappings:
+  RegionMap:
+    eu-west-2:
+      AMI: ami-0d8e27447ec2c8410
+    ca-central-1:
+      AMI: ami-0d4ae09ec9361d8ac
+    us-west-2:
+      AMI: ami-082b5a644766e0e6f
+    ap-east-1:
+      AMI: ami-570c7726
+    us-east-2:
+      AMI: ami-0d8f6eb4f641ef691
+    us-east-1:
+      AMI:  ami-0b898040803850657
+    us-west-1:
+      AMI: ami-056ee704806822732
+    sa-east-1:
+      AMI: ami-058943e7d9b9cabfb
+    eu-west-3:
+      AMI: ami-0adcddd3324248c4c
+    eu-central-1:
+      AMI: ami-0cc293023f983ed53
+    eu-west-1:
+      AMI: ami-0bbc25e23a7640b9b
+    ap-northeast-2:
+      AMI: ami-095ca789e0549777d
+    ap-northeast-1:
+      AMI: ami-0c3fd0f5d33134a76
+    ap-south-1:
+      AMI: ami-0d2692b6acea72ee6
+    ap-southeast-2:
+      AMI: ami-0dc96254d5535925f
+    ap-southeast-2:
+      AMI: ami-0dc96254d5535925f
+    eu-north-1:
+      AMI: ami-3f36be41
+    ap-northeast-3:
+      AMI: ami-0ee933a7f81beb045
+    ap-southeast-1:
+      AMI: ami-01f7527546b557442
+    cn-north-1:
+      AMI: ami-08b835182371dee58
+    cn-northwest-1:
+      AMI: ami-0829e595217a759b9
+
+Resources:
+  devopsVpc:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: 172.20.0.0/16
+      Tags:
+        - Key: Name
+          Value: devopsVPC
+
+  devopsPublicSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref devopsVpc
+      CidrBlock: 172.20.10.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: devopsPublicSubnet
+
+  devopsPrivateSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref devopsVpc
+      CidrBlock: 172.20.20.0/24
+      Tags:
+        - Key: Name
+          Value: devopsPrivateSubnet
+
+  devopsInternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: devopsInternetGateway
+
+  devopsAttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: devopsVpc
+      InternetGatewayId:
+        Ref: devopsInternetGateway
+
+  devopsNatGateway:
+    Type: 'AWS::EC2::NatGateway'
+    Properties:
+      SubnetId: !Ref devopsPublicSubnet
+      AllocationId:
+         Fn::GetAtt:
+         - devopsEip
+         - AllocationId
+      Tags:
+         - Key: Name
+           Value: devopsNatGateway
+
+  devopsEip:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  devopsCiCd:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      InstanceType: t2.micro
+      ImageId: !FindInMap
+        - RegionMap
+        - !Ref 'AWS::Region'
+        - AMI
+      KeyName: devops
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          SubnetId: !Ref devopsPublicSubnet
+      Tags:
+        - Key: Name
+          Value: DevopsServer
+      UserData:
+        Fn::Base64:
+          !Sub |
+              #!/bin/bash -ex
+              yum update;
+              wget -O /etc/yum.repos.d/jenkins.repo http://pkg.jenkins-ci.org/redhat-stable/jenkins.repo;
+              rpm --import http://pkg.jenkins-ci.org/redhat-stable/jenkins-ci.org.key
+              yum install jenkins;
+              service jenkins start;
+              chkconfig jenkins on;
+              pip install ansible;
+
+  devopsApp:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      InstanceType: t2.micro
+      ImageId: !FindInMap
+        - RegionMap
+        - !Ref 'AWS::Region'
+        - AMI
+      KeyName: devops
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          SubnetId: !Ref devopsPrivateSubnet
+      Tags:
+        - Key: Name
+          Value: AppServer
